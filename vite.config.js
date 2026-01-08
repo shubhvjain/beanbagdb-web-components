@@ -13,7 +13,7 @@ export default defineConfig({
     lib: {
       entry: 'src/index.js',
       name: 'BBDBComponents',
-      fileName: 'bbdb-components',
+      fileName: 'main',
       formats: ['es', 'umd']
     },
     rollupOptions: {
