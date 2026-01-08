@@ -28,6 +28,9 @@ jobs:
     # Step 3: Install dependencies
     - name: Install dependencies
       run: npm install
+    
+    - name: Build package
+      run: npm run build
 
     # Step 5: Publish to npm if tests pass
     - name: Publish to npm

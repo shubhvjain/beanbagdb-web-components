@@ -1,9 +1,9 @@
 {
-  "name": "bbdb-components",
-  "version": "0.1.0",
+  "name": "beanbagdb-components",
+  "version": "0.1.1",
   "type": "module",
-  "main": "./dist/bbdb-components.umd.js",
-  "module": "./dist/bbdb-components.es.js",
+  "main": "./dist/main.umd.js",
+  "module": "./dist/main.es.js",
   "files": [
     "dist"
   ],
@@ -13,7 +13,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "description": "",
   "dependencies": {
     "ajv": "^8.17.1",
