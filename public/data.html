@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- <script type="module" src="../dist/main.js"></script> -->
+
+    <title>BBDB-Database</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <link
+      href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css"
+      rel="stylesheet"
+    />
+    <script
+      type="text/javascript"
+      src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"
+    ></script>
+
+    <script src="app.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script type="module">
+      import { BBDB } from "../dist/main.js";
+      const { createApp, ref, onMounted, nextTick } = Vue;
+      let DB;
+      let dataTable;
+
+      function linkEditor(cell, onRendered, success, cancel, editorParams) {
+        const editor = document.createElement("input");
+        editor.type = "text";
+        editor.value = cell.getValue() || "";
+        editor.style.padding = "3px";
+        editor.style.width = "100%";
+        editor.style.boxSizing = "border-box";
+
+        const oldValue = cell.getOldValue();
+        const rowData = cell.getRow().getData();
+        const rowId = rowData._id;
+
+        console.log("Row ID:", rowId); // Debug: verify ID is correct
+
+        onRendered(() => {
+          editor.focus();
+          editor.select();
+        });
+
+        function attemptCommit() {
+          const newValue = editor.value.trim();
+
+          if (newValue === oldValue) {
+            success(newValue);
+            return;
+          }
+
+          if (!/^[a-zA-Z0-9]+$/.test(newValue)) {
+            cancel();
+            return;
+          }
+
+          editor.disabled = true;
+          editor.style.opacity = "0.6";
+
+          DB.update({
+            criteria: { _id: rowId },
+            updates: {
+              meta: {
+                link: newValue,
+              },
+            },
+          })
+            .then((response) => {
+              console.log(response);
+              success(newValue);
+              // if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              // return response.json();
+            })
+            // .then((data) => {
+            //   if (data.success) {
+            //     success(newValue);
+            //   } else {
+            //     throw new Error(data.error || "API rejected");
+            //   }
+            // })
+            .catch((error) => {
+              console.error("Update failed:", error);
+              //cell.restoreOldValue();
+              cancel();
+              showMessage("error", error.message);
+            })
+            .finally(() => {
+              editor.disabled = false;
+              editor.style.opacity = "1";
+            });
+        }
+
+        editor.addEventListener("change", attemptCommit);
+        editor.addEventListener("blur", attemptCommit);
+        editor.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") attemptCommit();
+          if (e.key === "Escape") cancel();
+        });
+
+        return editor;
+      }
+
+      function titleEditor(cell, onRendered, success, cancel, editorParams) {
+        const editor = document.createElement("input");
+        editor.type = "text";
+        editor.value = cell.getValue() || "";
+        editor.style.padding = "3px";
+        editor.style.width = "100%";
+        editor.style.boxSizing = "border-box";
+
+        const oldValue = cell.getOldValue();
+        const rowData = cell.getRow().getData();
+        const rowId = rowData._id;
+
+        console.log("Row ID:", rowId); // Debug: verify ID is correct
+
+        onRendered(() => {
+          editor.focus();
+          editor.select();
+        });
+
+        function attemptCommit() {
+          const newValue = editor.value.trim();
+
+          if (newValue === oldValue) {
+            success(newValue);
+            return;
+          }
+
+          // Title validation: alphanumeric + spaces, dashes, underscores (1-100 chars)
+          if (!/^[a-zA-Z0-9\s\-_]{1,100}$/.test(newValue)) {
+            cancel();
+            showMessage(
+              "error",
+              "Title must be 1-100 chars (letters, numbers, spaces, -, _)"
+            );
+            return;
+          }
+
+          editor.disabled = true;
+          editor.style.opacity = "0.6";
+
+          DB.update({
+            criteria: { _id: rowId },
+            updates: {
+              meta: {
+                title: newValue,
+              },
+            },
+          })
+            .then((response) => {
+              console.log(response);
+              success(newValue);
+            })
+            .catch((error) => {
+              console.error("Update failed:", error);
+              cancel();
+              showMessage("error", error.message);
+            })
+            .finally(() => {
+              editor.disabled = false;
+              editor.style.opacity = "1";
+            });
+        }
+
+        editor.addEventListener("change", attemptCommit);
+        editor.addEventListener("blur", attemptCommit);
+        editor.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") attemptCommit();
+          if (e.key === "Escape") cancel();
+        });
+
+        return editor;
+      }
+
+      function tagsEditor(cell, onRendered, success, cancel, editorParams) {
+        const editor = document.createElement("input");
+        editor.type = "text";
+        editor.value = (cell.getValue() || []).join(", ");
+        editor.style.padding = "3px";
+        editor.style.width = "100%";
+        editor.style.boxSizing = "border-box";
+        editor.placeholder = "Enter tags separated by commas";
+
+        const oldValue = cell.getOldValue() || [];
+        const rowData = cell.getRow().getData();
+        const rowId = rowData._id;
+
+        console.log("Row ID:", rowId);
+
+        onRendered(() => {
+          editor.focus();
+          editor.select();
+        });
+
+        function attemptCommit() {
+          const inputValue = editor.value.trim();
+
+          if (
+            inputValue ===
+            (Array.isArray(oldValue) ? oldValue.join(", ") : oldValue)
+          ) {
+            success(oldValue);
+            return;
+          }
+
+          const newTags = inputValue
+            ? inputValue
+                .split(",")
+                .map((tag) => tag.trim())
+                .filter((tag) => tag.length > 0)
+            : [];
+
+          if (newTags.length === 0 && inputValue !== "") {
+            cancel();
+            showMessage("error", "At least one tag required or clear all tags");
+            return;
+          }
+
+          const invalidTag = newTags.find(
+            (tag) => !/^[a-zA-Z0-9\-_\s]{1,50}$/.test(tag)
+          );
+          if (invalidTag) {
+            cancel();
+            showMessage(
+              "error",
+              `Invalid tag: "${invalidTag}". Use letters, numbers, -, _, spaces`
+            );
+            return;
+          }
+
+          editor.disabled = true;
+          editor.style.opacity = "0.6";
+
+          DB.update({
+            criteria: { _id: rowId },
+            updates: {
+              meta: {
+                tags: newTags,
+              },
+            },
+          })
+            .then((response) => {
+              console.log("Tags updated:", newTags, response);
+              success(newTags);
+            })
+            .catch((error) => {
+              console.error("Update failed:", error);
+              cell.restoreOldValue();
+              cancel();
+              showMessage("error", error.message);
+            })
+            .finally(() => {
+              editor.disabled = false;
+              editor.style.opacity = "1";
+            });
+        }
+
+        editor.addEventListener("change", attemptCommit);
+        editor.addEventListener("blur", attemptCommit);
+        editor.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") attemptCommit();
+          if (e.key === "Escape") cancel();
+        });
+
+        return editor;
+      }
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        try {
+          const db_details = await initPage();
+          DB = await BBDB(db_details);
+          await DB.ready();
+          //console.log(DB);
+          //console.log(db_details);
+          showMessage("success", `Loaded database: ${db_details.name}`);
+
+          createApp({
+            setup() {
+              const tableRef = ref(null);
+              const table = ref(null);
+              const loading = ref(false);
+              const recordCount = ref(0);
+
+              // Transform records for table
+              const transformRecords = (docs) => {
+                return docs.map((doc) => {
+                  const row = {
+                    schema: doc.schema || "unknown",
+                    _id: doc._id,
+                    _rev: doc._rev,
+                  };
+                  Object.keys(doc.meta).map((ky) => {
+                    row[`meta_${ky}`] = doc.meta[ky];
+                  });
+
+                  // if (doc.data) {
+                  //   Object.assign(row, doc.data);
+                  // }
+                  return row;
+                });
+              };
+
+              const generateColumns = () => {
+                let columns = [
+                  {
+                    title: "Title",
+                    field: "meta_title",
+                    sorter: "string",
+                    editor: titleEditor,
+                  },
+                  {
+                    title: "Schema",
+                    field: "schema",
+                    sorter: "string",
+                  },
+                  {
+                    title: "Link",
+                    field: "meta_link",
+                    sorter: "string",
+                    editor: linkEditor,
+                  },
+                  {
+                    title: "Document ID",
+                    field: "_id",
+                    sorter: "string",
+                  },
+                  // {
+                  //   title: "Revision ID",
+                  //   field: "_rev",
+                  //   sorter: "string",
+                  // },
+
+                  {
+                    title: "Created On",
+                    field: "meta_created_on",
+                    formatter: function (cell) {
+                      const ts = Number(cell.getValue());
+                      if (!ts || isNaN(ts)) return "Invalid Date";
+
+                      // Adjust multiplier based on your epoch unit:
+                      // - Use *1000 if seconds → ms (common for Unix)
+                      // - Use *1 if already ms (JavaScript Date expects ms)
+                      const date = new Date(ts * 1000);
+
+                      // Format as YYYY-MM-DD HH:mm:ss (customize as needed)
+                      const yyyy = date.getFullYear();
+                      const mm = String(date.getMonth() + 1).padStart(2, "0");
+                      const dd = String(date.getDate()).padStart(2, "0");
+                      const hh = String(date.getHours()).padStart(2, "0");
+                      const min = String(date.getMinutes()).padStart(2, "0");
+                      const ss = String(date.getSeconds()).padStart(2, "0");
+
+                      return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+                    },
+                  },
+                  {
+                    title: "Tags",
+                    field: "meta_tags",
+                    //sorter: "array",
+                    editor: tagsEditor,
+                    formatter: function (cell) {
+                      const tags = cell.getValue() || [];
+                      return tags.length ? tags.join(", ") : "";
+                    },
+                  },
+                ];
+                return columns;
+              };
+
+              const loadData = async (criteria = {}) => {
+                try {
+                  loading.value = true;
+                  const result = await DB.search({ selector: criteria });
+                  recordCount.value = result.docs.length;
+
+                  //const allFields = getAllFields(result.docs);
+                  //console.log(allFields)
+                  const tableData = transformRecords(result.docs);
+                  //console.log(tableData)
+                  const columns = generateColumns();
+
+                  if (table.value) {
+                    table.value.destroy();
+                  }
+
+                  await nextTick();
+
+                  table.value = new Tabulator(tableRef.value, {
+                    data: tableData,
+                    //autoColumns:true,
+                    columns: columns,
+                    layout: "fitColumns",
+                    responsiveLayout: "hide",
+                    pagination: true,
+                    paginationSize: 25,
+                    paginationSizeSelector: [10, 25, 50, 100],
+                    groupBy: "schema",
+                    groupStartOpen: true,
+                    download: true,
+                    downloadConfig: {
+                      csv: { downloadButton: true },
+                      excel: { downloadButton: true },
+                    },
+                    placeholder: "No data - click Search to load",
+                  });
+                } catch (error) {
+                  console.error("Load failed:", error);
+                } finally {
+                  loading.value = false;
+                }
+              };
+
+              onMounted(() => {
+                loadData({});
+              });
+
+              return {
+                tableRef,
+                table,
+                loading,
+                recordCount,
+                loadData,
+              };
+            },
+          }).mount("#app");
+        } catch (error) {
+          showMessage("error", error.message);
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div id="app" class="container-fluid py-4">
+      <div class="row mb-4">
+        <div class="col">
+          <button class="btn btn-primary" @click="loadData">
+            <span
+              v-if="loading"
+              class="spinner-border spinner-border-sm me-2"
+            ></span>
+            {{ loading ? 'Loading...' : 'Search' }}
+          </button>
+        </div>
+      </div>
+
+      <div ref="tableRef" class="tabulator"></div>
+    </div>
+  </body>
+</html>

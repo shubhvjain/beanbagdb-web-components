@@ -17,10 +17,14 @@ export default defineConfig({
       formats: ['es', 'umd']
     },
     rollupOptions: {
-      external: ['svelte'],
+      //external: ['svelte'],
       output: {
-        globals: { svelte: 'Svelte' }
+        globals: { svelte: 'Svelte' },
+        inlineDynamicImports: true
       }
-    }
+    },
+    minify: 'esbuild',           
+    sourcemap: true,
+    emptyOutDir: true      
   }
 });

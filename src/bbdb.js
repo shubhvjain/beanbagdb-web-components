@@ -2,7 +2,24 @@ import axios from 'axios';
 import Ajv from 'ajv';
 import { BeanBagDB } from 'beanbagdb';
 
-export default  DB = async (db_details) => {
+function extractCredentials(url) {
+  try {
+    const parsed = new URL(url);
+    const username = parsed.username;
+    const password = parsed.password;
+    
+    if (!username || !password) {
+      throw new Error('Username and password must be in URL (http://user:pass@host:port)');
+    }
+    
+    const baseUrl = `${parsed.protocol}//${parsed.host}`;
+    return { username, password, baseUrl };
+  } catch (error) {
+    throw new Error(`Invalid CouchDB URL format: ${error.message}. Use: http://user:pass@host:port`);
+  }
+}
+
+export const DB = async (db_details) => {
   if (!db_details.url) {
     throw new Error("No DB URL provided");
   }
@@ -13,10 +30,12 @@ export default  DB = async (db_details) => {
     throw new Error("No encryption key provided");
   }
 
-  // Extract server URL and db_name from provided URL (same logic as backend)
-  let server_url = db_details.url;
+  // Extract credentials FIRST - moved to top
+  const { username, password, baseUrl } = extractCredentials(db_details.url);
+  let server_url = baseUrl;
   let db_name = db_details.name;
-
+  console.log(baseUrl)
+  // Extract db_name from URL path if provided (existing logic preserved)
   const url_match = db_details.url.match(
     /^(https?:\/\/[^\/]+(?:\/[^\/]+)*)\/([^\/]+)$/
   );
@@ -25,24 +44,82 @@ export default  DB = async (db_details) => {
     db_name = db_details.name || url_match[2];
   }
 
-  const baseURL = `${server_url}/${db_name}`;
-  
-  // Create axios instance for this database
-  const apiClient = axios.create({
-    baseURL,
+  //const baseURL = `${server_url}/${db_name}`;
+  //console.log(baseURL)
+  // Create server client for server-level operations (KEEPS credentials context via cookie)
+  // couch.defaults.headers.common['Authorization'] = 
+  //'Basic ' + btoa(`${USERNAME}:${PASSWORD}`);
+  const serverClient = axios.create({
+    baseURL: `${baseUrl}/${db_name}`,
     timeout: 10000,
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json'
+      'Accept': 'application/json',
+    },
+    auth:{
+      username,
+      password 
     }
   });
 
-  // Ensure DB exists (same logic as backend)
+  // Create database client
+  const apiClient = axios.create({
+    baseURL:`${baseUrl}/${db_name}`,
+    timeout: 10000,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      
+    },
+     auth:{
+      username,
+      password 
+    }
+  });
+
+  // Authenticate first (cookie session) - use serverClient
+  // try {
+  //   const authResponse = await serverClient.post('/_session', 
+  //     `name=${username}&password=${password}`,
+  //     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  //   );
+    
+  //   const setCookie = authResponse.headers['set-cookie']?.[0];
+  //   if (setCookie) {
+  //     const cookieValue = setCookie.split(';')[0];
+  //     // Share cookie between both clients
+  //     apiClient.defaults.headers.common['Cookie'] = cookieValue;
+  //     serverClient.defaults.headers.common['Cookie'] = cookieValue;
+  //   }
+    
+  //   // Add user to database members (now with proper auth)
+  //   try {
+  //     const security = await apiClient.get('_security');
+  //     const updatedSecurity = {
+  //       ...security.data,
+  //       members: {
+  //         names: [...new Set([...(security.data?.members?.names || []), username])],
+  //         roles: security.data?.members?.roles || []
+  //       }
+  //     };
+  //     await apiClient.put('_security', updatedSecurity);
+  //     console.log(`${username} granted access to ${db_name}`);
+  //   } catch (securityError) {
+  //     if (securityError.response?.status !== 404) {
+  //       console.warn('Could not update DB security:', securityError.response?.data);
+  //     }
+  //   }
+  // } catch (authError) {
+  //   throw new Error(`Authentication failed: ${authError.response?.data?.reason || authError.message}`);
+  // }
+
+  // Ensure DB exists (use serverClient for creation)
   try {
     await apiClient.get('/');
   } catch (err) {
     if (err.response?.status === 404) {
-      await axios.put(`${server_url}/${db_name}`);
+      await serverClient.put(`/${db_name}`);
+      console.log(`Created database: ${db_name}`);
     } else {
       throw err;
     }
@@ -65,7 +142,6 @@ export default  DB = async (db_details) => {
         return response.data;
       },
       search: async (query) => {
-        // Mango query for _find endpoint
         const response = await apiClient.post('_find', query);
         return response.data;
       },
@@ -78,9 +154,8 @@ export default  DB = async (db_details) => {
         return response.data;
       },
       delete: async (doc_id) => {
-        // First get the document to get _rev
         const doc = await apiClient.get(`/${doc_id}`);
-        const response = await apiClient.delete(`/${doc_id}?rev=${doc._rev}`);
+        const response = await apiClient.delete(`/${doc._id}?rev=${doc._rev}`);
         return response.data;
       },
     },
@@ -147,6 +222,5 @@ export default  DB = async (db_details) => {
   };
 
   const database = new BeanBagDB(doc_obj);
-  await database.ready(false);
   return database;
 };
