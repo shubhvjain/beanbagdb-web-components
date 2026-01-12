@@ -1,0 +1,51 @@
+.gutter {
+    background-color: #eee;
+
+    background-repeat: no-repeat;
+    background-position: 50%;
+}
+
+.gutter.gutter-vertical {
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAFAQMAAABo7865AAAABlBMVEVHcEzMzMzyAv2sAAAAAXRSTlMAQObYZgAAABBJREFUeF5jOAMEEAIEEFwAn3kMwcB6I2AAAAAASUVORK5CYII=');
+}
+
+.gutter.gutter-horizontal {
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==');
+}
+
+
+ html, body {
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      
+      #app {
+        height: 100vh;
+        padding-bottom: 0;
+      }
+      
+
+      
+      .tabulator {
+        height: 100% !important;
+        min-height: 400px;
+      }
+      
+      .gutter {
+        background-color: #444;
+        cursor: col-resize;
+      }
+      
+      .gutter.gutter-hover {
+        background-color: #666;
+      }
+
+.navbar-brand{
+  font-size: 16px;
+}
+
+.accordion-header{
+  font-size: 12px;
+}

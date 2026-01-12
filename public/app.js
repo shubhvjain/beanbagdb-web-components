@@ -28,47 +28,34 @@ const initPage = async (params) => {
 const showMessage = (type, message) => {
   let messageEl = document.querySelector('#show-message');
   
-  // Color mapping based on type
-  const colors = {
-    'error': '#dc3545',
-    'success': '#28a745', 
-    'warning': '#ffc107',
-    'info': '#17a2b8'
+  // Bootstrap 5 alert type mapping
+  const alertTypes = {
+    'error': 'alert-danger',
+    'success': 'alert-success', 
+    'warning': 'alert-warning',
+    'info': 'alert-info'
   };
   
-  const color = colors[type] || '#6c757d';
+  const alertType = alertTypes[type] || 'alert-secondary';
   
   if (messageEl) {
-    // Replace existing content
-    messageEl.innerHTML = `${message} <button onclick="this.parentElement.remove()">X</button>`;
+    // Update existing alert
+    messageEl.className = `alert ${alertType} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x`;
+    messageEl.innerHTML = `<strong>${message}</strong> <button type="button" class="btn-close" onclick="this.parentElement.remove()" aria-label="Close"></button>`;
   } else {
-    // Create new div on top of body
+    // Create new Bootstrap alert
     messageEl = document.createElement('div');
     messageEl.id = 'show-message';
-    messageEl.innerHTML = `${message} <button onclick="this.parentElement.remove()">X</button>`;
-    document.body.prepend(messageEl); // Adds dynamically on top of body
+    messageEl.className = `alert ${alertType} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x`;
+    messageEl.innerHTML = `<strong>${message}</strong> <button type="button" class="btn-close" onclick="this.parentElement.remove()" aria-label="Close"></button>`;
+    document.body.prepend(messageEl);
   }
   
-  // Apply styling
+  // Position and size styling
   Object.assign(messageEl.style, {
-    color: color,
-    padding: '15px',
-    margin: '1',
-    boxShadow: `2px 10px 9px -5px rgba(0,0,0,0.2)`,
-    background: '#f8f9fa',
-    borderBottom: `4px solid ${color}`,
-    //boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    position: 'relative'
-  });
-  
-  // Style the close button
-  const closeBtn = messageEl.querySelector('button');
-  Object.assign(closeBtn.style, {
-    float: 'right',
-    border: 'none',
-    background: 'none',
-    fontSize: '20px',
-    cursor: 'pointer',
-    fontWeight: 'bold'
+    zIndex: '9999',
+    width: '90%',
+    maxWidth: '500px',
+    marginTop: '20px'
   });
 };

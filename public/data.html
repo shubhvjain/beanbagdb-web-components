@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -16,17 +16,28 @@
       href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css"
       rel="stylesheet"
     />
+    <link
+      href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator_site_dark.min.css"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="app.style.css" />
+
     <script
       type="text/javascript"
       src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"
     ></script>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.0/split.min.js"></script>
+
     <script src="app.js"></script>
+    <script src="local_cache.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script type="module">
       import { BBDB } from "../dist/main.js";
       const { createApp, ref, onMounted, nextTick } = Vue;
       let DB;
+      let DB_cache;
       let dataTable;
 
       function linkEditor(cell, onRendered, success, cancel, editorParams) {
@@ -273,14 +284,102 @@
         return editor;
       }
 
+      async function search_ready(db_details, db) {
+        //console.log(APP_CACHE);
+
+        const fetch_schemas = async () => {
+          let query = await db.search({
+            selector: { schema: "schema" },
+            fields: [],
+          });
+          let schemas = [];
+
+          query?.docs.map((itm) => {
+
+    
+            let schema_fields = ["schema","_id","meta.tags","meta.link","meta.created_on","meta.title"]
+            let col_names = []
+            Object.keys(itm.data.schema.properties).map((ky) => {
+              schema_fields.push(`data.${ky}`)
+              col_names.push({
+                field: `data_${ky}`,
+                title: ky
+              })
+            });
+
+
+            schemas.push({
+              title: `${itm?.data?.title}`,
+              columns: col_names,
+              criteria: { 
+                selector:{  
+                  schema: itm?.data?.name 
+                },
+                fields:schema_fields
+              },
+            });
+          });
+          return schemas;
+        };
+
+        const fetch_tags = async () => {
+          const query = await db.search({
+            selector: {},
+            limit: 2000,
+            fields: ["meta.tags"],
+          });
+          const tagSet = new Set();
+          query.docs.forEach((doc) => {
+            if (Array.isArray(doc.meta?.tags)) {
+              doc.meta.tags.forEach((tag) => tagSet.add(tag));
+            }
+          });
+          return Array.from(tagSet).map((tag) => ({
+            title: `#${tag}`,
+            criteria: {
+              "meta.tags": {
+                $in: [tag],
+              },
+            },
+          }));
+        };
+
+        // CACHE + STORE FOR REFRESH
+        const schemaKey = `${db_details.name}_schemas`;
+        const tagsKey = `${db_details.name}_tags`;
+
+        const filters = {
+          schema: await APP_CACHE.load(schemaKey, fetch_schemas),
+          tags: await APP_CACHE.load(tagsKey, fetch_tags),
+        };
+
+        // STORE GLOBALS FOR REFRESH BUTTONS + VUE
+        window.db_details = db_details;
+        window.refreshFunctions = {
+          [schemaKey]: fetch_schemas,
+          [tagsKey]: fetch_tags,
+        };
+        window.filters = filters;
+
+        console.log("Filters loaded:", filters);
+        return filters;
+      }
+
       document.addEventListener("DOMContentLoaded", async () => {
         try {
           const db_details = await initPage();
           DB = await BBDB(db_details);
           await DB.ready();
+
+          await search_ready(db_details, DB);
+          //DB_cache = new JsonCache(db_details.name)
+          //await DB_cache.init()
+
+          //console.log(await DB_cache.keys())
+
           //console.log(DB);
           //console.log(db_details);
-          showMessage("success", `Loaded database: ${db_details.name}`);
+          //showMessage("success", `Loaded database: ${db_details.name}`);
 
           createApp({
             setup() {
@@ -289,8 +388,13 @@
               const loading = ref(false);
               const recordCount = ref(0);
 
+              // FILTERS REFS
+              const schemas = ref([]);
+              const tags = ref([]);
+
               // Transform records for table
               const transformRecords = (docs) => {
+                console.log(docs)
                 return docs.map((doc) => {
                   const row = {
                     schema: doc.schema || "unknown",
@@ -301,6 +405,10 @@
                     row[`meta_${ky}`] = doc.meta[ky];
                   });
 
+                  Object.keys(doc.data).map((ky) => {
+                    row[`data_${ky}`] = doc.data[ky];
+                  });
+
                   // if (doc.data) {
                   //   Object.assign(row, doc.data);
                   // }
@@ -308,7 +416,7 @@
                 });
               };
 
-              const generateColumns = () => {
+              const generateColumns = (additional=[]) => {
                 let columns = [
                   {
                     title: "Title",
@@ -327,17 +435,17 @@
                     sorter: "string",
                     editor: linkEditor,
                   },
-                  {
-                    title: "Document ID",
-                    field: "_id",
-                    sorter: "string",
-                  },
+                  // {
+                  //   title: "Document ID",
+                  //   field: "_id",
+                  //   sorter: "string",
+                  // },
                   // {
                   //   title: "Revision ID",
                   //   field: "_rev",
                   //   sorter: "string",
                   // },
-
+                  ...additional,
                   {
                     title: "Created On",
                     field: "meta_created_on",
@@ -369,6 +477,124 @@
                     formatter: function (cell) {
                       const tags = cell.getValue() || [];
                       return tags.length ? tags.join(", ") : "";
+                    },
+                  },
+                  {
+                    title: "Actions",
+                    field: "actions",
+                    width: 75,
+                    minWidth: 60,
+                    hozAlign: "center",
+                    headerSort: false,
+                    formatter: function (cell) {
+                      return "..."; // Empty cell, just trigger for cellClick
+                    },
+                    cellClick: function (e, cell) {
+                      const rowData = cell.getRow().getData();
+                      const menu = document.createElement("div");
+                      menu.className =
+                        "position-absolute bg-dark border rounded shadow p-2";
+                      menu.style.zIndex = "1000";
+                      menu.innerHTML = `
+      <button class="btn btn-sm btn-outline-light w-100 mb-1 copy-id" data-id="${
+        rowData._id
+      }">Copy ID</button>
+      ${
+        rowData.meta_link
+          ? `<button class="btn btn-sm btn-outline-light w-100 mb-1 copy-link" data-link="${rowData.meta_link}">Copy Link</button>`
+          : ""
+      }
+          <button class="btn btn-sm btn-outline-light w-100 mb-1 related-btn" data-id="${
+            rowData._id
+          }"> Related docs</button>
+          <button class="btn btn-sm btn-outline-light w-100 mb-1 download-btn" data-id="${
+            rowData._id
+          }">Download doc</button>
+      <button class="btn btn-sm btn-primary w-100 edit-btn" data-id="${
+        rowData._id
+      }">Edit</button>
+      
+      <div class="dropdown-divider"></div>
+     
+       <button class="btn btn-sm btn-danger w-100 delete-btn" data-id="${
+         rowData._id
+       }">Delete</button>
+    `;
+
+                      // Position menu near click
+                      const rect = cell.getElement().getBoundingClientRect();
+                      menu.style.left = rect.left + "px";
+                      menu.style.top = rect.bottom + 5 + "px";
+
+                      document.body.appendChild(menu);
+
+                      // Single click handlers
+                      menu
+                        .querySelector(".copy-id")
+                        ?.addEventListener("click", (e) => {
+                          navigator.clipboard.writeText(rowData._id);
+                          showMessage("success", `Copied ID: ${rowData._id}`);
+                          menu.remove();
+                        });
+
+                      menu
+                        .querySelector(".copy-link")
+                        ?.addEventListener("click", (e) => {
+                          navigator.clipboard.writeText(rowData.meta_link);
+                          showMessage("success", `Copied Link`);
+                          menu.remove();
+                        });
+
+                      menu
+                        .querySelector(".edit-btn")
+                        ?.addEventListener("click", (e) => {
+                          showMessage("info", `Edit: ${rowData._id}`);
+                          console.log("Edit:", rowData._id); // Load into pane 3 here
+                          menu.remove();
+                        });
+
+                      menu
+                        .querySelector(".related-btn")
+                        ?.addEventListener("click", () => {
+                          if (
+                            confirm(
+                              `Are you sure you want to delete:\n"${
+                                rowData.meta_title || "No title"
+                              }"\nID: ${rowData._id}?`
+                            )
+                          ) {
+                            cell.getRow().delete(); // Tabulator's built-in row delete
+                            showMessage("success", `Deleted: ${rowData._id}`);
+                          }
+                          menu.remove();
+                        });
+
+                      menu
+                        .querySelector(".delete-btn")
+                        ?.addEventListener("click", () => {
+                          if (
+                            confirm(
+                              `Are you sure you want to delete:\n"${
+                                rowData.meta_title || "No title"
+                              }"\nID: ${rowData._id}?`
+                            )
+                          ) {
+                            cell.getRow().delete();
+                            showMessage("success", `Deleted: ${rowData._id}`);
+                          }
+                          menu.remove();
+                        });
+
+                      // Remove menu on outside click
+                      setTimeout(() => {
+                        const removeMenu = (e) => {
+                          if (!menu.contains(e.target)) {
+                            menu.remove();
+                            document.removeEventListener("click", removeMenu);
+                          }
+                        };
+                        document.addEventListener("click", removeMenu);
+                      }, 100);
                     },
                   },
                 ];
@@ -418,9 +644,109 @@
                 }
               };
 
-              onMounted(() => {
+              // FILTER CLICK HANDLERS
+              const applyFilter = async (filter) => {
+                console.log(filter);
+                if (table.value) {
+                  loading.value = true;
+                  try {
+                    const result = await DB.search(filter.criteria );
+                    let newColumns = generateColumns(filter.columns)
+                    table.value.setColumns(newColumns)
+                    const tableData = transformRecords(result.docs);
+                    table.value.replaceData(tableData); // Refresh table
+                    recordCount.value = tableData.length;
+                  } catch (error) {
+                    console.error("Filter failed:", error);
+                  } finally {
+                    loading.value = false;
+                  }
+                }
+              };
+
+              const refreshSchemas = async () => {
+                const key = `${window.db_details.name}_schemas`;
+                await APP_CACHE.refresh(key, window.refreshFunctions[key]);
+                window.filters.schema = await APP_CACHE.get(key);
+                schemas.value = window.filters.schema || [];
+              };
+
+              const refreshTags = async () => {
+                const key = `${window.db_details.name}_tags`;
+                await APP_CACHE.refresh(key, window.refreshFunctions[key]);
+                window.filters.tags = await APP_CACHE.get(key);
+                tags.value = window.filters.tags || [];
+              };
+
+              onMounted(async () => {
                 loadData({});
+
+                // Load filters into Vue
+                await search_ready(db_details, DB);
+                schemas.value = window.filters.schema || [];
+                tags.value = window.filters.tags || [];
+
+                // loadData({});
+                Split(["#pane1", "#pane2", "#pane3"], {
+                  sizes: [0, 80, 20],
+                  minSize: [175, 300, 100], // Minimum sizes for each pane
+                  gutterSize: 2, // Size of the draggable gutter
+                  snapOffset: 30, // Snap to edge if dragged within 30px
+                  direction: "horizontal", // Explicitly set horizontal direction
+                  cursor: "col-resize", // Cursor style for dragging
+                });
               });
+
+              const jsonQuery = ref('{"selector":{},"limit":1000}');
+              const queryResultCount = ref(0);
+              const queryError = ref("");
+              const jsonQueryValid = ref(true);
+
+              // Add these methods to setup()
+              const validateJsonQuery = () => {
+                try {
+                  JSON.parse(jsonQuery.value);
+                  queryError.value = "";
+                  jsonQueryValid.value = true;
+                  showMessage("success", "Valid JSON");
+                } catch (e) {
+                  queryError.value = `Invalid JSON: ${e.message}`;
+                  jsonQueryValid.value = false;
+                }
+              };
+
+              const runJsonQuery = async () => {
+                if (!jsonQueryValid.value) {
+                  showMessage("error", "Fix JSON first");
+                  return;
+                }
+
+                try {
+                  loading.value = true;
+                  const queryObj = JSON.parse(jsonQuery.value);
+                  const result = await DB.search(queryObj);
+
+                  queryResultCount.value = result.docs.length;
+                  queryError.value = "";
+
+                  // Update table if valid result
+                  if (result.docs && result.docs.length > 0) {
+                    const tableData = transformRecords(result.docs);
+                    if (table.value) {
+                      table.value.replaceData(tableData);
+                      recordCount.value = tableData.length;
+                    }
+                  }
+
+                  // showMessage('success', `${result.docs.length} docs loaded`);
+                } catch (error) {
+                  queryError.value = `Query failed: ${error.message}`;
+                  console.error("Query error:", error);
+                  showMessage("error", error.message);
+                } finally {
+                  loading.value = false;
+                }
+              };
 
               return {
                 tableRef,
@@ -428,6 +754,17 @@
                 loading,
                 recordCount,
                 loadData,
+                schemas,
+                tags,
+                applyFilter,
+                refreshSchemas,
+                refreshTags,
+                jsonQuery,
+                queryResultCount,
+                queryError,
+                jsonQueryValid,
+                validateJsonQuery,
+                runJsonQuery,
               };
             },
           }).mount("#app");
@@ -438,20 +775,312 @@
     </script>
   </head>
   <body>
-    <div id="app" class="container-fluid py-4">
-      <div class="row mb-4">
-        <div class="col">
-          <button class="btn btn-primary" @click="loadData">
+    <!-- REPLACE YOUR BODY CONTENT WITH THIS - Uses your existing Bootstrap 5 -->
+    <div id="app" class="d-flex h-100 overflow-hidden">
+      <!-- PANE 1: Query (10%) -->
+      <div id="pane1" class="d-flex flex-column border-end">
+        <nav class="navbar bg-body-tertiary">
+          <div class="container-fluid">
+            <a class="navbar-brand"> Search</a>
+            <div class="d-flex">
+              <!-- <button class="btn btn-sm">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                  class="bi bi-arrow-clockwise"
+                  viewBox="0 0 16 16"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"
+                  />
+                  <path
+                    d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"
+                  />
+                </svg>
+              </button> -->
+              <!-- <small class="badge bg-secondary">{{ recordCount }} records</small> -->
+              <!-- <button class="btn btn-sm" @click="loadData">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                  class="bi bi-caret-right-fill"
+                  viewBox="0 0 16 16"
+                >
+                  <path
+                    d="m12.14 8.753-5.482 4.796c-.646.566-1.658.106-1.658-.753V3.204a1 1 0 0 1 1.659-.753l5.48 4.796a1 1 0 0 1 0 1.506z"
+                  />
+                </svg>
+              </button> -->
+            </div>
+          </div>
+        </nav>
+        <div>
+          <div class="accordion accordion-flush" id="accordionFlushExample">
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button
+                  class="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#flush-collapseOne"
+                  aria-expanded="false"
+                  aria-controls="flush-collapseOne"
+                >
+                  Schemas
+                </button>
+              </h2>
+              <div
+                id="flush-collapseOne"
+                class="accordion-collapse collapse"
+                data-bs-parent="#accordionFlushExample"
+              >
+                <div class="accordion-body p-0">
+                  <div
+                    v-if="schemas.length"
+                    class="list-group list-group-flush"
+                  >
+                    <a
+                      v-for="schema in schemas"
+                      :key="schema.criteria.schema"
+                      class="list-group-item list-group-item-action p-2 small"
+                      @click="applyFilter(schema)"
+                      style="cursor: pointer"
+                    >
+                      {{ schema.title }}
+                    </a>
+                  </div>
+                  <div v-else class="text-muted small p-2">
+                    Loading schemas...
+                  </div>
+                  <div class="border-top pt-1">
+                    <button
+                      class="btn btn-sm btn-outline-secondary m-2"
+                      @click="refreshSchemas"
+                    >
+                      Refresh Schemas
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button
+                  class="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#flush-collapseTwo"
+                  aria-expanded="false"
+                  aria-controls="flush-collapseTwo"
+                >
+                  JSON Query
+                </button>
+              </h2>
+              <div
+                id="flush-collapseTwo"
+                class="accordion-collapse collapse"
+                data-bs-parent="#accordionFlushExample"
+              >
+                <div class="accordion-body p-1">
+                  <!-- JSON Editor -->
+                  <div class="mb-2">
+                    <textarea
+                      v-model="jsonQuery"
+                      class="form-control form-control-sm"
+                      rows="6"
+                      placeholder='{ "selector": {}, "limit": 1000 }'
+                    ></textarea>
+                  </div>
+
+                  <!-- Validate + Run buttons -->
+                  <div class="d-flex gap-1 mb-2">
+                    <button
+                      class="btn btn-sm btn-outline-secondary flex-grow-1"
+                      @click="validateJsonQuery"
+                    >
+                      Validate
+                    </button>
+                    <button
+                      class="btn btn-sm btn-primary flex-grow-1"
+                      @click="runJsonQuery"
+                      :disabled="loading"
+                    >
+                      <span
+                        v-if="loading"
+                        class="spinner-border spinner-border-sm me-1"
+                      ></span>
+                      Run Query
+                    </button>
+                  </div>
+
+                  <!-- Error display -->
+                  <div
+                    v-if="queryError"
+                    class="alert alert-danger p-1 small mb-0"
+                  >
+                    {{ queryError }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button
+                  class="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#flush-collapseThree"
+                  aria-expanded="false"
+                  aria-controls="flush-collapseThree"
+                >
+                  Custom Scripts
+                </button>
+              </h2>
+              <div
+                id="flush-collapseThree"
+                class="accordion-collapse collapse"
+                data-bs-parent="#accordionFlushExample"
+              >
+                <div class="accordion-body">
+                 
+                </div>
+              </div>
+            </div> -->
+
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button
+                  class="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#flush-collapseTags"
+                >
+                  Tags
+                </button>
+              </h2>
+              <div
+                id="flush-collapseTags"
+                class="accordion-collapse collapse"
+                data-bs-parent="#accordionFlushExample"
+              >
+                <div class="accordion-body p-0">
+                  <div
+                    v-if="tags.length"
+                    class="list-group list-group-flush max-h-200px overflow-auto"
+                  >
+                    <a
+                      v-for="tag in tags"
+                      :key="tag.criteria['meta.tags']"
+                      class="list-group-item list-group-item-action p-2 small"
+                      @click="applyFilter(tag)"
+                      style="cursor: pointer"
+                    >
+                      {{ tag.title }}
+                    </a>
+                  </div>
+                  <div v-else class="text-muted small p-2">Loading tags...</div>
+                  <div class="border-top pt-1">
+                    <button
+                      class="btn btn-sm btn-outline-secondary m-2"
+                      @click="refreshTags"
+                    >
+                      Refresh Tags
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- <button
+            class="btn btn-primary btn-lg px-4 py-2 shadow"
+            @click="loadData"
+          >
             <span
               v-if="loading"
               class="spinner-border spinner-border-sm me-2"
             ></span>
             {{ loading ? 'Loading...' : 'Search' }}
-          </button>
+          </button> -->
         </div>
       </div>
 
-      <div ref="tableRef" class="tabulator"></div>
+      <!-- PANE 2: Results (65%) -->
+      <div id="pane2" class="flex-grow-1 d-flex flex-column border-end">
+        <nav class="navbar bg-body-tertiary">
+          <div class="container-fluid">
+            <a class="navbar-brand"> Results</a>
+            <div class="d-flex">
+              <small class="badge bg-secondary"
+                >{{ recordCount }} records</small
+              >
+            </div>
+          </div>
+        </nav>
+        <div ref="tableRef" class="flex-grow-1 tabulator overflow-hidden"></div>
+      </div>
+
+      <!-- PANE 3: Editor (25%) -->
+      <div id="pane3" class="d-flex flex-column" style="min-width: 280px">
+        <nav class="navbar bg-body-tertiary">
+          <div class="container-fluid">
+            <a class="navbar-brand"> Doc</a>
+            <div class="d-flex">
+              <input
+                class="form-control me-2 form-control-sm"
+                type="search"
+                placeholder="Search"
+                aria-label="Search"
+              />
+              <button class="btn btn-sm">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="15"
+                  height="15"
+                  fill="currentColor"
+                  class="bi bi-search"
+                  viewBox="0 0 16 16"
+                >
+                  <path
+                    d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </nav>
+        <!-- <div class="p-3 border-bottom bg-dark-subtle">
+      <h6 class="mb-0 fw-bold text-white small">Editor</h6>
+    </div> -->
+
+        <!-- <div
+          class="flex-grow-1 p-4 d-flex align-items-center justify-content-center"
+        >
+          <div
+            class="card border-0 shadow-sm w-100 h-100 d-flex align-items-center justify-content-center"
+          >
+
+            <div class="text-center text-muted px-3">
+              <div class="h4 mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-file-text" viewBox="0 0 16 16">
+  <path d="M5 4a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1zm-.5 2.5A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5M5 8a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1z"/>
+  <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zm10-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1"/>
+</svg></div>
+              <div class="fw-medium mb-1">Select a doc</div>
+              <small>to start editing</small>
+            </div>
+          </div>
+        </div> -->
+      </div>
     </div>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+      crossorigin="anonymous"
+    ></script>
   </body>
 </html>
