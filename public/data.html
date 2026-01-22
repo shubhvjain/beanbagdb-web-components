@@ -368,7 +368,7 @@
       document.addEventListener("DOMContentLoaded", async () => {
         try {
           const db_details = await initPage();
-          DB = await BBDB(db_details);
+          DB = await BBDB(db_details.dbObj);
           await DB.ready();
 
           await search_ready(db_details, DB);

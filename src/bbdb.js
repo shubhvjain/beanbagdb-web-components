@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Ajv from 'ajv';
 import { BeanBagDB } from 'beanbagdb';
+import Mustache from 'mustache';
 
 function extractCredentials(url) {
   try {
@@ -218,6 +219,11 @@ export const DB = async (db_details) => {
         const valid = validate(data_copy);
         return { valid, validate, data: data_copy };
       },
+      compile_template:{
+        "mustache":(template,data)=>{
+          return Mustache.render(template, data);
+        }
+      }
     },
   };
 

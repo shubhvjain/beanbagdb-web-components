@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- <script type="module" src="../dist/main.js"></script> -->
+
+    <title>BBDB-Database</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+
+    <link rel="stylesheet" href="app.style.css" />
+    <script src="app.js"></script>
+
+    <script type="module">
+      import { BBDB } from "../dist/main.js";
+      let DB;
+      let DB_cache;
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        try {
+          const db_details = await initPage("doc");
+          console.log(db_details);
+          DB = await BBDB(db_details.dbObj);
+          await DB.ready();
+
+          const doc_element = document.createElement("bbdb-doc");
+          doc_element.BBDB = DB;
+          console.log(doc_element);
+          doc_element.addEventListener("action",handle_bbdb_action);
+
+          document.getElementById("pane_doc_editor").appendChild(doc_element);
+        } catch (error) {
+          showMessage("error", error.message);
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div class="container-fluid h-100">
+      <div class="row">
+        <div class="col-12">
+          <div id="pane_doc_editor"></div>
+        </div>
+      </div>
+    </div>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+      crossorigin="anonymous"
+    ></script>
+  </body>
+</html>

@@ -27,7 +27,13 @@
     expand_height: true,
   };
   const load_editor = () => {
+    theEditor = null
+    //console.log("loading...")
+    //console.log(schema)
     if (container_element) {
+      if(!schema){
+        throw new Error("No schema provided")
+      }
       const editorOptions = {
         ...default_options,
         ...editor_options,
@@ -60,8 +66,9 @@
   };
 
   onMount(async () => {
-    setTimeout(load_editor, 100);
+    setTimeout(load_editor, 50);
   });
+
 
   // $effect(() => {
   //   if (theEditor && data !== undefined) {
@@ -80,7 +87,7 @@
     </ul>
   </div>
 {:else}
-  Data is valid
+  <!-- Data is valid -->
 {/if}
 
 <style>

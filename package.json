@@ -1,6 +1,6 @@
 {
   "name": "beanbagdb-components",
-  "version": "0.2.0",
+  "version": "0.2.5",
   "type": "module",
   "main": "./dist/main.umd.js",
   "module": "./dist/main.es.js",
@@ -12,7 +12,11 @@
     "dev": "vite build --watch & vite",
     "preview": "vite preview --port 4173"
   },
-  "keywords": ["svelte", "web-components", "custom-elements"],
+  "keywords": [
+    "svelte",
+    "web-components",
+    "custom-elements"
+  ],
   "author": "",
   "license": "MIT",
   "description": "",
@@ -20,7 +24,8 @@
     "@json-editor/json-editor": "^2.15.2",
     "ajv": "^8.17.1",
     "axios": "^1.13.2",
-    "beanbagdb": "^0.8.3",
+    "beanbagdb": "^0.8.5",
+    "mustache": "^4.2.0",
     "svelte": "^5.46.1"
   },
   "devDependencies": {
