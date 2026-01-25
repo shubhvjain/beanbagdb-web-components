@@ -30,6 +30,10 @@
 
           const doc_element = document.createElement("bbdb-doc");
           doc_element.BBDB = DB;
+          doc_element.new_doc = db_details.new_record
+          if(db_details.single_record){
+            doc_element.search_criteria = db_details.parsedDocCriteria
+          }
           console.log(doc_element);
           doc_element.addEventListener("action",handle_bbdb_action);
 
@@ -41,7 +45,7 @@
     </script>
   </head>
   <body>
-    <div class="container-fluid h-100">
+    <div class="container-fluid">
       <div class="row">
         <div class="col-12">
           <div id="pane_doc_editor"></div>

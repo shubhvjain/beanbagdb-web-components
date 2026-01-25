@@ -68,7 +68,7 @@ const initPage = async (page_name,params) => {
   let result = { dbObj, parsedDocCriteria }
   if(page_name=="doc"){
     //for the document page, if db is provided show search bar, if doc provided do not show the search bar
-    result["single_record"] = !parsedDocCriteria==null
+    result["single_record"] = !(parsedDocCriteria==null)
     result["new_record"] = parsedDocCriteria==null
   }
   return  result;
@@ -121,6 +121,10 @@ const handle_bbdb_action = (action_data)=>{
   const all_actions = {
     "message":()=>{
       showMessage(action.type,action.message)
+    },
+    "message_link":()=>{
+      let message = `${action.message} Doc Link : <a href='doc.html?doc=${action.link}' target='_blank'>View</a>`
+      showMessage(action.type,message)
     }
   }
   all_actions[action.name]()
