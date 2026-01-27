@@ -125,6 +125,9 @@ const handle_bbdb_action = (action_data)=>{
     "message_link":()=>{
       let message = `${action.message} Doc Link : <a href='doc.html?doc=${action.link}' target='_blank'>View</a>`
       showMessage(action.type,message)
+    },
+    "open_link":()=>{
+      window.open(`doc.html?doc=${action.link}`, '_blank');
     }
   }
   all_actions[action.name]()

@@ -156,7 +156,7 @@ export const DB = async (db_details) => {
       },
       delete: async (doc_id) => {
         const doc = await apiClient.get(`/${doc_id}`);
-        const response = await apiClient.delete(`/${doc._id}?rev=${doc._rev}`);
+        const response = await apiClient.delete(`/${doc.data._id}?rev=${doc.data._rev}`);
         return response.data;
       },
     },

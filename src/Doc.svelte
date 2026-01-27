@@ -9,7 +9,8 @@
   import Editor from "./Editor.svelte";
   import TagsEditor from "./custom/TagsEditor.svelte";
   import Mustache from "mustache";
-
+  import ViewDoc from "./custom/ViewDoc.svelte";
+  import SearchBox from "./SearchBox.svelte";
   let {
     BBDB,
     new_doc = true,
@@ -59,6 +60,7 @@
     doc: {},
     schema: {},
     data_valid: true,
+    related_docs:{},
   });
 
   let view_obj = $state("");
@@ -135,6 +137,7 @@
         message: "Document added.",
         link: `${BBDB.meta.database_name}.link.${new_doc.meta.link}`,
       });
+      reset_new_doc_creator()
     } catch (error) {
       console.log(error);
       dispatch("message", { type: "error", message: `${error.message}` });
@@ -150,7 +153,7 @@
       //console.log(docsearch);
       record = docsearch;
       console.log(record);
-      
+
       // select_edit
       render_view();
     } catch (error) {
@@ -162,6 +165,7 @@
   const reset_new_doc_creator = async () => {
     new_doc_details.selected_schema = "";
     new_doc_details.schema = null;
+    new_doc_details.doc = null;
     setTimeout(async () => {
       if (schema_name) {
         new_doc_details.selected_schema = schema_name;
@@ -171,7 +175,7 @@
   };
 
   const render_view = () => {
-    view_obj = " "
+    view_obj = "";
     let schema_name = record.doc.schema;
     if (default_views[schema_name]) {
       view_obj = Mustache.render(default_views[schema_name].template, record);
@@ -242,14 +246,53 @@
     if (mode == "view") {
       return;
     }
-    
-    render_view()
+
+    render_view();
     mode = "view";
   };
 
   const on_save_button = async () => {
     await save_data("data");
   };
+
+  const load_related_doc = async () => {
+    try {
+      record.related_docs = {};
+      let rel_docs = await BBDB.get({ type:"related_doc",criteria:{ "link":record.doc.meta.link} })
+      console.log(rel_docs)
+      record.related_docs =  rel_docs
+    } catch (error) {
+      console.log(error)
+      dispatch("message",{"message":"No related docs exists", type:"danger"})
+    }
+  };
+
+  let selected_related_doc = $state("")
+  let related_label = $state("related")
+  const related_new_doc = async ()=>{
+    if(!selected_related_doc){
+      dispatch("message",{"type":"error",message:"No doc selected"})
+    }
+    console.log(selected_related_doc)
+    let new_relation = {
+      "edge_name": related_label,
+      node1 : record.doc._id ,
+      node2 : selected_related_doc
+    }
+    console.log(new_relation)
+    let new_doc = await BBDB.create({data:new_relation,schema:"system_edge"})
+    console.log(new_doc)
+    load_related_doc()
+  }
+
+  const delete_edge = async (edge_id)=>{
+    console.log(edge_id)
+    await BBDB.delete({_id:edge_id})
+    load_related_doc()
+    //const index = record.edges.find(obj => obj.edge_id === edge_id);
+    //if (index !== -1) {record.edges.splice(index, 1);}
+  }
+
 </script>
 
 {#if loading}
@@ -373,8 +416,74 @@
   </details>
   <details>
     <summary>Actions</summary>
+
+    <div>
+      <button class="action-btn">Download doc</button>
+      <button class="action-btn">Delete doc</button>
+      <button
+        class="action-btn"
+        onclick={() => {
+          load_related_doc();
+        }}>Show related docs</button
+      >
+    </div>
+    <div>
+{#if record.related_docs }
+       <table class="related-list">
+        <tbody>
+           {#each record.related_docs.edges as e }
+            <tr>
+              <td>
+                {#if e.node1 == record.doc._id }
+                  { record.related_docs.details[e.node1]["title"]}
+                {:else}
+                  <a  onclick={()=>{dispatch("open_link",{link:`${BBDB.meta.database_name}._id.${e.node1}`})}}>  { record.related_docs.details[e.node1]["title"]} </a>
+                {/if}
+                
+              </td>
+              <td>
+                 {e.label}
+              </td>
+              <td>
+                {#if e.node2 == record.doc._id }
+                  { record.related_docs.details[e.node2]["title"]}
+                {:else}
+                  <a  onclick={()=>{dispatch("open_link",{link:`${BBDB.meta.database_name}._id.${e.node2}`})}}> <u style="cursor: pointer;"> { record.related_docs.details[e.node2]["title"]}  </u></a>
+                {/if}
+
+                <!-- {record.related_docs.details[e.node2]["title"]} -->
+              </td>
+              <td>
+                <button onclick={()=>{delete_edge(e.edge_id)}}>Delete</button>
+              </td>
+            </tr>
+           
+        {/each}
+        </tbody>
+       
+      </table>
+{/if}
+     
+
+
+      <br>
+      <strong style="font-size: 14px;">Relate a new doc</strong>
+      <div class="card">
+        <div>
+          <SearchBox  {BBDB}  bind:selected={selected_related_doc}/>
+        </div>
+        <div style="padding-left: 10px;">
+          <label for="fname"> Label </label>
+          <input class="search-input" bind:value={related_label} type="text"   placeholder="Label">
+        </div>
+        <div>
+            <button class="action-btn" onclick={()=>{related_new_doc()}}>Add</button>
+        </div>
+      </div>
+        
+    </div>
   </details>
-  
+
   <details open>
     <summary
       >Doc
@@ -425,7 +534,11 @@
       {/if}
     </summary>
     {#if mode == "view"}
-      <div>{@html view_obj}</div>
+      {#if view_obj}
+        <div>{@html view_obj}</div>
+      {:else}
+        <ViewDoc data={record.doc.data} />
+      {/if}
     {:else if mode == "edit"}
       <Editor
         bind:schema={record.schema}
@@ -569,9 +682,61 @@
   details summary {
     outline: 0;
   }
+  details {
+    padding: 2px;
+  }
   details p {
     font-size: 0.95rem;
     margin: 0 0 1rem;
     padding-top: 1rem;
   }
+  .action-btn {
+    padding: 2px;
+    margin-left: 2px;
+    margin-right: 2px;
+  }
+  button {
+    font-size: 14px;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+  .card{
+    border: 1px solid #dfdfdf36;
+    margin-top: 5px;
+    padding: 5px;
+  }
+
+  .card {
+  display: flex;
+  flex-direction: row;
+  /* background-color: DodgerBlue; */
+  padding: 5px;
+}
+
+.card div {
+  /* background-color: #f1f1f1; */
+  /* width: 100px; */
+  /* margin: 10px; */
+  /* padding: 10px; */
+  /* text-align: center;   */
+  /* font-size: 30px; */
+}
+
+  .search-input {
+    /* width: 100%; */
+    padding: 5px;
+    border: none;
+    /* border-bottom: 1px solid #eee; */
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+
+.related-list{
+  font-size: 14px;
+}
+
+.related-list th, td {
+  padding: 10px;
+}
+
 </style>
