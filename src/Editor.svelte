@@ -1,4 +1,8 @@
-<!--  -->
+<svelte:options
+  customElement={{
+    tag: "json-editor",
+  }}
+/>
 <script>
   import { onMount } from "svelte";
   import { JSONEditor } from "@json-editor/json-editor";
@@ -267,6 +271,14 @@
     /* Multi-checkbox combo */
   :global(#editor-json .je-array-controls) {
     background: transparent;
+  }
+  :global(#editor-json .je-modal) {
+    background-color: #ccccccb0 !important;
+  }
+
+  :global(#editor-json .json-editor-btn-edit_properties) {
+    margin-left: 3px;
+    margin-right: 3px;
   }
 
   /* Full combo integration */
